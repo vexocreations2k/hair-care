@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RootCare: Hair Photo Check</title>
+<style>
+:root{--bg:#eef2ec;--card:#fff;--ink:#16302b;--text:#1d2a27;--mut:#4b5c57;--line:#d3ddd6;--leaf:#2f7d62;--amber:#c98a0b;--warn:#a3341f;--on:#fff;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Times New Roman",serif;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a17;--card:#172622;--ink:#e7efe9;--text:#e3ebe6;--mut:#9db2aa;--line:#2a3e38;--leaf:#5fc19a;--amber:#e0a82e;--warn:#ff8a72;--on:#0f1a17}}
+:root[data-theme="dark"]{--bg:#0f1a17;--card:#172622;--ink:#e7efe9;--text:#e3ebe6;--mut:#9db2aa;--line:#2a3e38;--leaf:#5fc19a;--amber:#e0a82e;--warn:#ff8a72;--on:#0f1a17}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 var(--sans)}
+.app{max-width:520px;margin:0 auto;padding:16px}
+h1,h2{font-family:var(--serif);color:var(--ink);margin:0;line-height:1.2}
+h1{font-size:1.6rem}h2{font-size:1.2rem;margin-bottom:8px}
+p{margin:0 0 .8em}.mut{color:var(--mut);font-size:.92rem}.note{font-size:.8rem;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:220px;border:2px dashed var(--leaf);border-radius:16px;background:var(--card);cursor:pointer;text-align:center;padding:16px;overflow:hidden}
+.drop img{max-width:100%;max-height:300px;border-radius:10px}
+.btn{width:100%;min-height:48px;background:var(--ink);color:var(--on);border:0;border-radius:999px;font:600 1rem var(--sans);cursor:pointer;margin-top:12px}
+.btn.alt{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.top{display:flex;gap:18px;align-items:center}
+.status{font:700 1.3rem var(--serif);color:var(--ink)}
+.ring-t{font:700 30px var(--serif);fill:var(--ink)}
+.item{padding:10px 0;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+.item b{display:block;color:var(--ink)}.item span{color:var(--mut);font-size:.92rem}
+.alert{border:2px solid var(--warn);border-radius:12px;padding:12px;color:var(--warn);font-weight:600;margin-bottom:12px}
+.err{color:var(--warn);font-weight:600}
+.dots{display:inline-block;animation:p 1s infinite}@keyframes p{50%{opacity:.3}}
+@media(prefers-reduced-motion:reduce){.dots{animation:none}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>Hair photo check</h1>
+<p class="mut">Add one clear photo of your hair. The app checks only the photo and tells you how your hair looks and what to ask a doctor about.</p>
+<label class="drop" id="drop" for="file"><span id="dropText"><b>Take or choose a photo</b><br><span class="mut">Daylight, dry hair, no cap. Crown, hairline or parting.</span></span></label>
+<input id="file" type="file" accept="image/*" hidden>
+<button class="btn" id="go" type="button">Check my hair</button>
+<p id="msg" class="err" role="status" style="margin-top:10px"></p>
+<div id="out" aria-live="polite"></div>
+<div id="hist"></div>
+<p class="note">General information from a photo, not a diagnosis. See a dermatologist before starting prescription medicine. Your photo is sent for analysis and not stored by this page.</p>
+</div>
+<script>
+(function(){
+var blob=null,busy=false,$=function(i){return document.getElementById(i)};
+var PROMPT='You check hair health from one photo for a hair care app. Look only at what is visible. Reply with JSON only, no markdown, in this exact shape: {"usable":boolean,"reason":string,"score":integer 0-100,"status":"Strong"|"Stable"|"Needs attention"|"See a doctor","areas_checked":[string],"findings":[{"label":string,"detail":string}],"medicine":[{"name":string,"why":string}],"see_doctor":boolean,"tips":[string]}. Rules: if the photo is not hair or scalp, or is too dark or blurry, set usable false, explain in reason, and use empty lists and score 0. Say which areas you could see (for example hairline, parting, crown) and do not judge areas you cannot see. Score the visible hair for density, thickness, hairline and scalp condition. Findings should be 2 to 5 short plain items. Medicine lists 1 to 3 common options a doctor may consider for the visible signs (for example minoxidil, ketoconazole shampoo, checking iron and vitamin D), each with a short reason. Never give doses. Never state a diagnosis or a cause as certain. Set see_doctor true and status "See a doctor" for bald patches, sores, redness with pain, or sudden heavy loss. Keep language simple.';
+function show(t,cls){var m=$('msg');m.textContent=t||'';m.className=cls||'err'}
+function shrink(f){return new Promise(function(res,rej){var im=new Image(),u=URL.createObjectURL(f);
+ im.onload=function(){var s=Math.min(1,1024/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(function(b){b?res(b):rej(new Error('x'))},'image/jpeg',.85)};
+ im.onerror=function(){rej(new Error('x'))};im.src=u})}
+$('file').addEventListener('change',function(e){
+ var f=e.target.files[0];if(!f)return;show('');$('out').textContent='';
+ shrink(f).then(function(b){blob=b;var d=$('drop');d.textContent='';var i=document.createElement('img');i.alt='Your hair photo';i.src=URL.createObjectURL(b);d.appendChild(i)})
+ .catch(function(){blob=null;show('That file could not be read as a photo. Try another one.')})});
+function mk(tag,txt,cls){var e=document.createElement(tag);if(txt!=null)e.textContent=txt;if(cls)e.className=cls;return e}
+function list(title,arr,f){var c=mk('section',null,'card');c.appendChild(mk('h2',title));arr.forEach(function(x){var d=mk('div',null,'item');f(d,x);c.appendChild(d)});return c}
+function ring(s){var c=2*Math.PI*44,v=s/100*c,n='http://www.w3.org/2000/svg',w=document.createElementNS(n,'svg');w.setAttribute('width','108');w.setAttribute('height','108');w.setAttribute('viewBox','0 0 108 108');w.setAttribute('role','img');w.setAttribute('aria-label','Hair score '+s+' out of 100');
+ function ci(col,da){var e=document.createElementNS(n,'circle');e.setAttribute('cx',54);e.setAttribute('cy',54);e.setAttribute('r',44);e.setAttribute('fill','none');e.setAttribute('stroke',col);e.setAttribute('stroke-width',10);if(da){e.setAttribute('stroke-linecap','round');e.setAttribute('stroke-dasharray',da);e.setAttribute('transform','rotate(-90 54 54)')}return e}
+ w.appendChild(ci('var(--line)'));w.appendChild(ci('var(--leaf)',v+' '+c));var t=document.createElementNS(n,'text');t.setAttribute('x',54);t.setAttribute('y',63);t.setAttribute('text-anchor','middle');t.setAttribute('class','ring-t');t.textContent=s;w.appendChild(t);return w}
+function render(r){
+ var o=$('out');o.textContent='';
+ if(!r.usable){var c=mk('section',null,'card');c.appendChild(mk('h2','Please retake the photo'));c.appendChild(mk('p',r.reason||'The photo was not clear enough to check.'));o.appendChild(c);return}
+ var s=Math.max(0,Math.min(100,Math.round(+r.score||0)));
+ var top=mk('section',null,'card');
+ if(r.see_doctor)top.appendChild(mk('div','Please see a doctor soon. The photo shows signs that need a professional check.','alert'));
+ var row=mk('div',null,'top');row.appendChild(ring(s));var t=mk('div');t.appendChild(mk('div',r.status||'','status'));
+ t.appendChild(mk('p','Checked: '+(r.areas_checked||[]).join(', '),'mut'));row.appendChild(t);top.appendChild(row);o.appendChild(top);
+ o.appendChild(list('What we can see',r.findings||[],function(d,x){d.appendChild(mk('b',x.label));d.appendChild(mk('span',x.detail))}));
+ if((r.medicine||[]).length){o.appendChild(list('Medicine to ask your doctor about',r.medicine,function(d,x){d.appendChild(mk('b',x.name));d.appendChild(mk('span',x.why))}))}
+ if((r.tips||[]).length){o.appendChild(list('Next steps',r.tips,function(d,x){d.appendChild(mk('span',x))}))}
+}
+var KEY='rootcare.photo.v1';
+function getH(){try{var a=JSON.parse(localStorage.getItem(KEY));return Array.isArray(a)?a:[]}catch(e){return[]}}
+function putH(a){try{localStorage.setItem(KEY,JSON.stringify(a.slice(-24)))}catch(e){}}
+function sv(n,at,p){var e=document.createElementNS('http://www.w3.org/2000/svg',n);for(var k in at)e.setAttribute(k,at[k]);if(p)p.appendChild(e);return e}
+function chart(a){var w=320,h=140,s=sv('svg',{viewBox:'0 0 '+w+' '+h,width:'100%',role:'img','aria-label':'Hair score trend from '+a[0].s+' to '+a[a.length-1].s});
+ sv('line',{x1:20,y1:h-20,x2:w-20,y2:h-20,stroke:'var(--line)'},s);
+ var pts=a.map(function(x,i){return[20+i*(w-40)/(a.length-1),h-20-x.s/100*(h-40)]});
+ sv('polyline',{points:pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1)}).join(' '),fill:'none',stroke:'var(--leaf)','stroke-width':3,'stroke-linejoin':'round'},s);
+ pts.forEach(function(p){sv('circle',{cx:p[0].toFixed(1),cy:p[1].toFixed(1),r:4.5,fill:'var(--amber)'},s)});return s}
+function sgn(n){return(n>0?'+':'')+n}
+function drawHist(){var h=$('hist');h.textContent='';var a=getH();if(!a.length)return;
+ var c=mk('section',null,'card');c.appendChild(mk('h2','Your hair performance'));
+ if(a.length<2){c.appendChild(mk('p','First photo saved. Take another photo next month, in the same light and angle, to see your trend.','mut'))}
+ else{var l=a[a.length-1].s,p=a[a.length-2].s,f=a[0].s,d=l-p,v=l-f,st=d>=3?'Improving':d<=-3?'Declining':'Steady';
+  var t=mk('div',null,'top');t.appendChild(mk('div',st,'status'));c.appendChild(t);
+  c.appendChild(mk('p','Change since last photo: '+sgn(d)+' points. Since your first photo: '+sgn(v)+' points.','mut'));
+  if(st==='Declining')c.appendChild(mk('p','If the score keeps falling over two or three photos, talk to a doctor. Also check that light and angle were similar.','mut'));
+  c.appendChild(chart(a.slice(-12)))}
+ a.slice(-6).reverse().forEach(function(x){var d=mk('div',null,'item');d.appendChild(mk('b',x.d+': '+x.s+' out of 100'));d.appendChild(mk('span',x.t||''));c.appendChild(d)});
+ var b=mk('button','Clear history','btn alt');b.type='button';b.addEventListener('click',function(){if(confirm('Delete your saved scores on this device?')){putH([]);drawHist()}});c.appendChild(b);h.appendChild(c)}
+function perf(r){var a=getH();a.push({d:new Date().toISOString().slice(0,10),s:Math.max(0,Math.min(100,Math.round(+r.score||0))),t:r.status||''});putH(a);drawHist()}
+drawHist();
+$('go').addEventListener('click',async function(){
+ if(busy)return;
+ if(!blob){show('Add a hair photo first.');return}
+ show('');busy=true;$('go').textContent='Checking…';
+ try{
+  var sample=await claude.use('sample');
+  if(!sample||!(await sample.limits()).images){show('Photo check is not available in this view. Open the page from your claude.ai account.');return}
+  var res=await sample(PROMPT,{images:[blob],cache:false,modelTier:'default'});
+  var txt=res.text.replace(/```json|```/g,'').trim(),r=JSON.parse(txt.slice(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  render(r);if(r.usable)perf(r);$('out').scrollIntoView({behavior:'smooth'});
+ }catch(e){show(e&&e.code==='not_granted'?'Permission was declined, so the photo could not be checked.':e&&e.code==='rate_limited'?'Too many checks. Wait a moment and try again.':'The photo could not be checked. Try a clearer photo.')}
+ finally{busy=false;$('go').textContent='Check my hair'}
+});
+})();
+</script>
+</body>
+</html>
